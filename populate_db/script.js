@@ -19,10 +19,8 @@ const csvFilePath = `../data/ratings_and_sentiments.csv`;
 function populateFirestoreFromCsv(csvFilepath) {
     const db = admin.firestore();
     const collectionRef = db.collection(collectionName);
- 
+    const dataArr = [];
 // Read and parse CSV file
-const dataArr = []; // Array to hold the data
-const batchSize = 500; // Adjust the batch size as needed
 
 fs.createReadStream(csvFilePath)
   .pipe(csvParser())
@@ -30,30 +28,27 @@ fs.createReadStream(csvFilePath)
     dataArr.push(row);
   })
   .on('end', () => {
-    console.log(`CSV file read and parsed. Total records: ${dataArr.length}`);
+    const batches = []; // Array to hold the data
+    const batchSize = 500; // Adjust the batch size as needed
 
-    // Commit data in batches
-    let startIndex = 0;
-    while (startIndex < dataArr.length) {
-      const batch = db.batch();
-      const endIndex = Math.min(startIndex + batchSize, dataArr.length);
-
-      for (let i = startIndex; i < endIndex; i++) {
-        const docRef = collectionRef.doc();
-        batch.set(docRef, dataArr[i]);
-      }
-
-      batch.commit()
-        .then(() => {
-          console.log(`Batch of ${endIndex - startIndex} documents written`);
-        })
-        .catch((error) => {
-          console.error(`Error committing batch: ${error}`);
+    for (let i = 0; i < dataArr.length; i += batchSize) {
+        const batch = db.batch();
+        dataArr.slice(i,i+batchSize).forEach(record => {
+            const docRef = collectionRef.doc();
+            batch.set(docRef, record); 
         });
-
-      startIndex = endIndex;
+        batches.push(batch.commit());
     }
-    console.log('All data batches committed');
+    // wait for all the batches to complete
+
+    Promise.all(batches)
+    .then(() => {
+        console.log(`Firestore population completed!`);
+        console.log(`CSV file read and parsed. Total records: ${dataArr.length}`);
+    })
+    .catch((error) => {
+        console.log(`Error populating firestore: `,error)
+    });
   });
 };
 populateFirestoreFromCsv(csvFilePath);
